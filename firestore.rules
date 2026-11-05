@@ -1,0 +1,115 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() { return request.auth != null; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    function isValidPost(data) {
+      return data.keys().hasAll(['text', 'userId', 'ym', 'createdAt', 'isAwarded', 'likeCount', 'cheerCount', 'totalScore'])
+        && data.text is string && data.text.size() <= 500
+        && data.userId == request.auth.uid
+        && data.ym is string && data.ym.size() == 7
+        && data.likeCount is number
+        && data.cheerCount is number
+        && data.totalScore is number
+        && data.isAwarded is bool
+        && (!('faction' in data) || (data.faction is string && data.faction in ['heaven', 'hell']))
+        && (!('originalFaction' in data) || (data.originalFaction is string && data.originalFaction in ['heaven', 'hell']))
+        && (!('winningFaction' in data) || (data.winningFaction is string && data.winningFaction in ['heaven', 'hell']))
+        && (!('replyLikeCount' in data) || data.replyLikeCount is number)
+        && (!('conversionCount' in data) || data.conversionCount is number)
+        && (!('themeTitle' in data) || (data.themeTitle is string && data.themeTitle.size() <= 100))
+        && (!('userName' in data) || (data.userName is string && data.userName.size() <= 100))
+        && (!('userPhoto' in data) || (data.userPhoto is string && data.userPhoto.size() <= 1000));
+    }
+
+    function isValidConversion(data) {
+      return data.keys().hasAll(['postId', 'userId', 'faction', 'text', 'likeCount', 'createdAt'])
+        && data.postId is string && isValidId(data.postId)
+        && data.userId == request.auth.uid
+        && data.faction is string && (data.faction in ['heaven', 'hell'])
+        && data.text is string && data.text.size() <= 500
+        && data.likeCount is number
+        && data.createdAt == request.time
+        && (!('userName' in data) || (data.userName is string && data.userName.size() <= 100))
+        && (!('userPhoto' in data) || (data.userPhoto is string && data.userPhoto.size() <= 1000));
+    }
+
+    match /posts/{postId} {
+      allow read: if isSignedIn();
+
+      allow create: if isSignedIn()
+        && isValidId(postId)
+        && isValidPost(incoming())
+        && incoming().createdAt == request.time
+        && incoming().likeCount == 0
+        && incoming().cheerCount == 0
+        && incoming().totalScore == 0
+        && incoming().isAwarded == false;
+
+      allow update: if isSignedIn()
+        && isValidId(postId)
+        && (
+          // Awarding action (client side dynamically runs this for past months top 3)
+          (
+            incoming().diff(existing()).affectedKeys().hasOnly(['isAwarded', 'text', 'awardedRank'])
+            && incoming().isAwarded == true
+            && existing().isAwarded == false
+            && incoming().text == ''
+            && incoming().awardedRank is number
+          )
+          ||
+          // Reaction aggregating action, conversion battle winner determination, or conversion count
+          (
+            incoming().diff(existing()).affectedKeys().hasAny(['likeCount', 'cheerCount', 'totalScore', 'conversionCount', 'faction', 'winningFaction', 'originalFaction', 'replyLikeCount'])
+            && incoming().diff(existing()).affectedKeys().hasOnly(['likeCount', 'cheerCount', 'totalScore', 'conversionCount', 'faction', 'winningFaction', 'originalFaction', 'replyLikeCount'])
+            && (!incoming().diff(existing()).affectedKeys().hasAny(['likeCount']) || (incoming().likeCount - existing().likeCount <= 1 && incoming().likeCount - existing().likeCount >= -1))
+            && (!incoming().diff(existing()).affectedKeys().hasAny(['cheerCount']) || (incoming().cheerCount - existing().cheerCount <= 1 && incoming().cheerCount - existing().cheerCount >= -1))
+            && (!incoming().diff(existing()).affectedKeys().hasAny(['faction']) || (incoming().faction is string && incoming().faction in ['heaven', 'hell']))
+            && (!incoming().diff(existing()).affectedKeys().hasAny(['winningFaction']) || (incoming().winningFaction is string && incoming().winningFaction in ['heaven', 'hell']))
+            && (!incoming().diff(existing()).affectedKeys().hasAny(['originalFaction']) || (incoming().originalFaction is string && incoming().originalFaction in ['heaven', 'hell']))
+          )
+        );
+
+      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+
+      match /reactions/{userId} {
+        allow read: if isSignedIn();
+        allow update, create: if isSignedIn()
+          && isValidId(userId)
+          && request.auth.uid == userId
+          && (incoming().get('like', false) is bool)
+          && (incoming().get('cheer', false) is bool);
+        allow delete: if isSignedIn() && request.auth.uid == userId;
+      }
+
+      match /conversions/{conversionId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn()
+          && isValidId(conversionId)
+          && isValidConversion(incoming())
+          && incoming().likeCount == 0;
+        allow update: if isSignedIn()
+          && isValidId(conversionId)
+          && incoming().diff(existing()).affectedKeys().hasOnly(['likeCount'])
+          && (incoming().likeCount - existing().likeCount <= 1 && incoming().likeCount - existing().likeCount >= -1);
+        allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+
+        match /reactions/{userId} {
+          allow read: if isSignedIn();
+          allow update, create: if isSignedIn()
+            && isValidId(userId)
+            && request.auth.uid == userId
+            && (incoming().get('like', false) is bool);
+          allow delete: if isSignedIn() && request.auth.uid == userId;
+        }
+      }
+    }
+  }
+}

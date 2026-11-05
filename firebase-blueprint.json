@@ -1,0 +1,72 @@
+{
+  "entities": {
+    "Post": {
+      "title": "Post",
+      "description": "User post for Heaven or Hell faction",
+      "type": "object",
+      "properties": {
+        "text": { "type": "string", "maxLength": 500 },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userPhoto": { "type": "string" },
+        "faction": { "type": "string", "enum": ["heaven", "hell"] },
+        "originalFaction": { "type": "string", "enum": ["heaven", "hell"] },
+        "winningFaction": { "type": "string", "enum": ["heaven", "hell"] },
+        "replyLikeCount": { "type": "integer" },
+        "themeTitle": { "type": "string" },
+        "likeCount": { "type": "integer" },
+        "cheerCount": { "type": "integer" },
+        "totalScore": { "type": "integer" },
+        "conversionCount": { "type": "integer" },
+        "ym": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "isAwarded": { "type": "boolean" },
+        "awardedRank": { "type": "integer" }
+      },
+      "required": ["userId", "text", "ym", "createdAt", "likeCount", "cheerCount", "totalScore", "isAwarded"]
+    },
+    "Conversion": {
+      "title": "Conversion",
+      "description": "Faction counter-conversion or rebuttal text",
+      "type": "object",
+      "properties": {
+        "postId": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userPhoto": { "type": "string" },
+        "faction": { "type": "string", "enum": ["heaven", "hell"] },
+        "text": { "type": "string", "maxLength": 500 },
+        "likeCount": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["postId", "userId", "faction", "text", "likeCount", "createdAt"]
+    },
+    "Reaction": {
+      "title": "Reaction",
+      "description": "User reaction tracking",
+      "type": "object",
+      "properties": {
+        "like": { "type": "boolean" },
+        "cheer": { "type": "boolean" }
+      }
+    }
+  },
+  "firestore": {
+    "posts/{postId}": {
+      "schema": { "$ref": "#/entities/Post" },
+      "description": "List of user posts"
+    },
+    "posts/{postId}/reactions/{userId}": {
+      "schema": { "$ref": "#/entities/Reaction" },
+      "description": "List of user reactions"
+    },
+    "posts/{postId}/conversions/{conversionId}": {
+      "schema": { "$ref": "#/entities/Conversion" },
+      "description": "List of counter transformations by opposing faction"
+    },
+    "posts/{postId}/conversions/{conversionId}/reactions/{userId}": {
+      "schema": { "$ref": "#/entities/Reaction" },
+      "description": "Reactions to counter transformations"
+    }
+  }
+}
